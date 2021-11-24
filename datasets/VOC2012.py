@@ -15,22 +15,25 @@ class VOC2012_Dataset(data.Dataset):
     means = [0.485, 0.456, 0.406]
     stds = [0.229, 0.224, 0.225]
 
-    def __init__(self, root, img_size=(512, 512)):
+    def __init__(self, root, img_size=(512, 512), split='train'):
+        assert split in ['train', 'trainval', 'val']
         self.root = root
         self.img_size = img_size
-        self.train_val_names = self.read_names(f'{self.root}/ImageSets/Segmentation/trainval.txt')
-        self.img_paths = [f'{self.root}/JPEGImages/{name}.jpg' for name in self.train_val_names]
-        self.label_paths = [f'{self.root}/EncodedSegMap/{name}.png' for name in self.train_val_names]
-        if len(glob.glob(f'{self.root}/EncodedSegMap/*.png')) != len(self.label_paths):
-            src_paths = [f'{self.root}/SegmentationClass/{name}.png' for name in self.train_val_names]
-            self.pre_encode_segmap(src_paths, self.label_paths)
-
+        self.names = self.read_names(f'{self.root}/ImageSets/Segmentation/{split}.txt')
+        self.img_paths = [f'{self.root}/JPEGImages/{name}.jpg' for name in self.names]
+        self.label_paths = [f'{self.root}/EncodedSegMap/{name}.png' for name in self.names]
         self.transform = transforms.Compose(
             [
                 transforms.ToTensor(),
                 transforms.Normalize(self.means, self.stds),
             ]
         )
+        # Encode segmap
+        existed_encoded_segmaps = set([os.path.basename(path) for path in glob.glob(f'{self.root}/EncodedSegMap/*.png')])
+        targeted_segmaps = set([os.path.basename(path) for path in self.label_paths])
+        if not targeted_segmaps.issubset(existed_encoded_segmaps):
+            src_paths = [f'{self.root}/SegmentationClass/{name}.png' for name in self.names]
+            self.pre_encode_segmap(src_paths, self.label_paths)
 
     def __len__(self):
         return len(self.label_paths)
