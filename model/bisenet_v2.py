@@ -1,4 +1,4 @@
-from efficientnet_pytorch import EfficientNet
+from .effnet import EfficientNet
 
 import torch
 import torch.nn as nn
@@ -70,7 +70,7 @@ class SegmentBranch(nn.Module):
         super(SegmentBranch, self).__init__()
         self.backbone = EfficientNet.from_pretrained(
             model_name='efficientnet-b0',
-            weights_path='efficientnet-b0-355c32eb.pth'
+            weights_path='weights/efficientnet-b0-355c32eb.pth'
         )
 
     def forward(self, x):
