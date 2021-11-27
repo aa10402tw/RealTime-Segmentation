@@ -7,7 +7,7 @@ import glob
 from PIL import Image
 from tqdm import tqdm
 from torch.utils import data
-from torchvision import transforms
+import torchvision
 
 
 class VOC2012_Dataset(data.Dataset):
@@ -15,19 +15,15 @@ class VOC2012_Dataset(data.Dataset):
     means = [0.485, 0.456, 0.406]
     stds = [0.229, 0.224, 0.225]
 
-    def __init__(self, root, img_size=(512, 512), split='train'):
+    def __init__(self, root, img_size=(512, 512), split='train', transforms=None):
         assert split in ['train', 'trainval', 'val']
         self.root = root
         self.img_size = img_size
         self.names = self.read_names(f'{self.root}/ImageSets/Segmentation/{split}.txt')
         self.img_paths = [f'{self.root}/JPEGImages/{name}.jpg' for name in self.names]
         self.label_paths = [f'{self.root}/EncodedSegMap/{name}.png' for name in self.names]
-        self.transform = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize(self.means, self.stds),
-            ]
-        )
+        self.transforms = transforms
+
         # Encode segmap
         existed_encoded_segmaps = set([os.path.basename(path) for path in glob.glob(f'{self.root}/EncodedSegMap/*.png')])
         targeted_segmaps = set([os.path.basename(path) for path in self.label_paths])
@@ -41,7 +37,24 @@ class VOC2012_Dataset(data.Dataset):
     def __getitem__(self, index):
         img = Image.open(self.img_paths[index])
         label = Image.open(self.label_paths[index])
-        return self.transform_img_label(img, label)
+        if self.transforms == None:
+            img, label = self.default_transform_img_label(img, label)
+        else:
+            img, label = self.transforms(img, label)
+        label[label == 255] = 0
+        return img, label
+
+    def default_transform_img_label(self, img, label):
+        transforms = torchvision.transforms.Compose(
+            [
+                torchvision.transforms.ToTensor(),
+                torchvision.transforms.Normalize(self.means, self.stds),
+            ]
+        )
+        img = transforms(img.resize(self.img_size))
+        label = np.array(label.resize(self.img_size, Image.NEAREST))
+        label = torch.from_numpy(label).long()
+        return img, label
 
     @staticmethod
     def get_pascal_labels():
@@ -135,17 +148,12 @@ class VOC2012_Dataset(data.Dataset):
         for src_path, dst_path in zip(src_paths, dst_paths):
             label = np.asarray(Image.open(src_path).convert('RGB'))
             encoded_label = VOC2012_Dataset.encode_segmap(label)
+            encoded_label = encoded_label.astype(np.uint8)
             encoded_label = Image.fromarray(encoded_label)
             encoded_label.save(dst_path, format="png")
             pbar.update()
         pbar.close()
 
-    def transform_img_label(self, img, label):
-        img = self.transform(img.resize(self.img_size))
-        label = np.array(label.resize(self.img_size, Image.NEAREST))
-        label = torch.from_numpy(label).long()
-        label[label == 255] = 0
-        return img, label
 
 class UnNormalize(object):
     def __init__(self, mean, std):
@@ -155,6 +163,7 @@ class UnNormalize(object):
         for t, m, s in zip(tensor, self.mean, self.std):
             t.mul_(s).add_(m)
         return tensor
+
 
 if __name__ == '__main__':
     train_data = VOC2012_Dataset(root="G:/Codes/RealTime-Segementation/datasets/VOC2012")
